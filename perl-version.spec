@@ -1,7 +1,7 @@
 Name:           perl-version
 Epoch:          3
-Version:        0.99.02
-%define module_version 0.9902
+Version:        0.99.07
+%global module_version 0.9907
 Release:        2%{?dist}
 Summary:        Perl extension for Version Objects
 License:        GPL+ or Artistic
@@ -9,22 +9,31 @@ Group:          Development/Libraries
 URL:            http://search.cpan.org/dist/version/
 Source0:        http://www.cpan.org/authors/id/J/JP/JPEACOCK/version-%{module_version}.tar.gz
 BuildRequires:  perl
-BuildRequires:  perl(Config)
-BuildRequires:  perl(ExtUtils::MakeMaker)
-BuildRequires:  perl(File::Spec)
-BuildRequires:  perl(strict)
-BuildRequires:  perl(vars)
-# Tests:
 BuildRequires:  perl(base)
+BuildRequires:  perl(Carp)
+BuildRequires:  perl(Config)
+BuildRequires:  perl(constant)
 BuildRequires:  perl(Data::Dumper)
+BuildRequires:  perl(ExtUtils::CBuilder)
+BuildRequires:  perl(ExtUtils::MakeMaker)
 BuildRequires:  perl(File::Basename)
+BuildRequires:  perl(File::Spec)
 BuildRequires:  perl(File::Temp) >= 0.13
 # IO::Handle is optional
 BuildRequires:  perl(lib)
+BuildRequires:  perl(List::Util)
+BuildRequires:  perl(locale)
+BuildRequires:  perl(overload)
+BuildRequires:  perl(parent)
 BuildRequires:  perl(POSIX)
+BuildRequires:  perl(strict)
 BuildRequires:  perl(Test::More) >= 0.45
 BuildRequires:  perl(Test::Harness)
+BuildRequires:  perl(UNIVERSAL)
+BuildRequires:  perl(vars)
 Requires:       perl(:MODULE_COMPAT_%(eval "`perl -V:version`"; echo $version))
+Requires:       perl(UNIVERSAL)
+Requires:       perl(XSLoader)
 
 %{?perl_default_filter}
 # version::vxs is private module (see bug #633775)
@@ -42,14 +51,14 @@ strongly urged to set 0.77 as a minimum in your code.
 %setup -q -n version-%{module_version}
 
 %build
-perl Makefile.PL INSTALLDIRS=vendor OPTIMIZE="$RPM_OPT_FLAGS"
+perl Makefile.PL INSTALLDIRS=vendor OPTIMIZE="%{optflags}"
 make %{?_smp_mflags}
 
 %install
-make pure_install DESTDIR=$RPM_BUILD_ROOT
-find $RPM_BUILD_ROOT -type f -name .packlist -exec rm -f {} \;
-find $RPM_BUILD_ROOT -type f -name '*.bs' -size 0 -exec rm -f {} \;
-%{_fixperms} $RPM_BUILD_ROOT/*
+make pure_install DESTDIR=%{buildroot}
+find %{buildroot} -type f -name .packlist -exec rm -f {} +
+find %{buildroot} -type f -name '*.bs' -size 0 -exec rm -f {} +
+%{_fixperms} %{buildroot}/*
 
 %check
 make test
@@ -61,11 +70,42 @@ make test
 %doc %{perl_vendorarch}/version/Internals.pod
 %{perl_vendorarch}/auto/version/
 %{perl_vendorarch}/version.pm
+%{perl_vendorarch}/version/vpp.pm
 %{perl_vendorarch}/version/vxs.pm
+%{perl_vendorarch}/version/regex.pm
 %{_mandir}/man3/version.3pm*
 %{_mandir}/man3/version::Internals.3pm*
 
 %changelog
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 3:0.99.07-2
+- Mass rebuild 2014-01-24
+
+* Wed Jan 15 2014 Petr Šabata <contyk@redhat.com> - 3:0.99.07-1
+- 0.9907 bugfix bump
+
+* Tue Jan 07 2014 Petr Šabata <contyk@redhat.com> - 3:0.99.06-1
+- 0.9906 bump
+
+* Tue Sep 10 2013 Petr Šabata <contyk@redhat.com> - 3:0.99.04-2
+- Release bump to (hopefully) fix the build
+
+* Tue Sep 10 2013 Petr Šabata <contyk@redhat.com> - 3:0.99.04-1
+- 0.9904 bump
+
+* Mon Aug 26 2013 Petr Šabata <contyk@redhat.com> - 3:0.99.03-1
+- 0.9903 bump
+- Prefer %%global over %%define
+
+* Sun Aug 04 2013 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 3:0.99.02-291
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_20_Mass_Rebuild
+
+* Mon Jul 15 2013 Petr Pisar <ppisar@redhat.com> - 3:0.99.02-290
+- Increase release to favour standalone package
+
+* Fri Jul 12 2013 Petr Pisar <ppisar@redhat.com> - 3:0.99.02-3
+- Perl 5.18 rebuild
+>>>>>>> fc/master
+
 * Tue Jul 02 2013 Jitka Plesnikova <jplesnik@redhat.com> - 3:0.99.02-2
 - Specify all dependencies
 

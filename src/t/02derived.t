@@ -6,23 +6,23 @@
 
 use Test::More qw/no_plan/;
 use File::Temp qw/tempfile/;
-my $Verbose;
 
 BEGIN {
-    require "t/coretests.pm";
-    use_ok("version", 0.9902);
+    (my $coretests = $0) =~ s'[^/]+\.t'coretests.pm';
+    require $coretests;
+    use_ok("version", 0.9907);
     # If we made it this far, we are ok.
 }
 
 use lib qw/./;
 
 package version::Bad;
-use base 'version';
+use parent 'version';
 sub new { my($self,$n)=@_;  bless \$n, $self }
 
 # Bad subclass for SemVer failures seen with pure Perl version.pm only
 package version::Bad2;
-use base 'version';
+use parent 'version';
 sub new {
     my ($class, $val) = @_;
     die 'Invalid version string format' unless version::is_strict($val);
@@ -45,7 +45,7 @@ my ($fh, $filename) = tempfile('tXXXXXXX', SUFFIX => '.pm', UNLINK => 1);
 print $fh <<"EOF";
 # This is an empty subclass
 package $package;
-use base 'version';
+use parent 'version';
 use vars '\$VERSION';
 \$VERSION=0.001;
 EOF
@@ -56,8 +56,6 @@ sub main_reset {
     undef &qv; undef *::qv; # avoid 'used once' warning
     undef &declare; undef *::declare; # avoid 'used once' warning
 }
-
-diag "Tests with empty derived class"  if $Verbose;
 
 use_ok($package, 0.001);
 my $testobj = $package->new(1.002_003);
@@ -80,7 +78,6 @@ main_reset;
 use_ok($package, 0.001, "declare");
 BaseTests($package, "parse", "declare");
 
-diag "tests with bad subclass"  if $Verbose;
 $testobj = version::Bad->new(1.002_003);
 isa_ok( $testobj, "version::Bad" );
 eval { my $string = $testobj->numify };
