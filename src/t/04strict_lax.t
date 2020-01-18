@@ -5,16 +5,13 @@
 #########################
 
 use Test::More qw/no_plan/;
-
+my $Verbose;
 # do strict lax tests in a sub to isolate a package to test importing
 SKIP: {
-    skip 'No extended regexes Perl < 5.006', 174
-	if $] < 5.006_000;
+    skip 'No extended regexes Perl < 5.006', 172 
+    	if $] < 5.006_000;
     strict_lax_tests();
-    is ref($version::LAX), 'Regexp', 'Can see $version::LAX '.$version::LAX ;
-    is ref($version::STRICT), 'Regexp', 'Can see $version::STRICT '.$version::STRICT;
 }
-
 
 sub strict_lax_tests {
   package temp12345;

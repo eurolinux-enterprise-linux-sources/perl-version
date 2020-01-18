@@ -8,17 +8,13 @@ use strict;
 use ExtUtils::MakeMaker;
 use Config qw(%Config);
 use File::Spec;
-use File::Copy;
-
-if ($] < 5.006002) {
-    die <<'EOL'
-Perl 5.006002 required.  Please install version-0.9906 if you need
-to support an earlier Perl release.
-EOL
-}
 
 use vars qw ($no_xs $force_xs);
-unlink 'pm_to_blib'; # belts and braces
+
+if ( $] >= 5.009_001 && $] < 5.010_000 ) {
+    die "The CPAN module cannot be tested with Perl $]\n".
+    	"Please update to the latest bleadperl...";
+}
 
 if ($ENV{PERL_ONLY}) {
     $no_xs = 1;
@@ -31,33 +27,23 @@ for (@ARGV)
     /^--xs/ and $no_xs = 0;
 }
 
-if ($] < 5.010) { # support pure Perl only
-    $no_xs = 1;
-}
-
 map { unlink $_ if -f $_ } <vutil/Makefile*>;
 
 unless (defined $no_xs)
 {
     check_for_compiler()
         or no_cc();
-
 }
 
 write_makefile();
 
 sub write_makefile
 {
-    my %prereq = (
-        'Test::More' => 0.45,
-        'File::Temp' => 0.13,
-        'parent'     => 0.221,
-    );
+    my %prereq = ( 'Test::More' => 0.45, 'File::Temp' => 0.13 );
 
     WriteMakefile( VERSION_FROM    => 'lib/version.pm',
                    NAME            => 'version',
                    LICENSE         => 'perl',
-                   MIN_PERL_VERSION=> 5.006002,
                    PREREQ_PM       => \%prereq,
                    CONFIGURE       => \&init,
                    ( $] >= 5.005 ?
@@ -65,27 +51,15 @@ sub write_makefile
                        AUTHOR      => 'John Peacock <jpeacock@cpan.org>') :
                      ()
                    ), 
-                   ( $] >= 5.009001 && $] < 5.011000 ?
-                     ( INSTALLDIRS => 'perl' ) :
-                     ()
-                   ),
-		   ( ($] < 5.012
-		       && ! $ENV{PERL_NO_HIGHLANDER}
-		       && ! ( $ENV{PERL_MM_OPT}
-			   && $ENV{PERL_MM_OPT} =~ /(?:INSTALL_BASE|PREFIX)/ )
-		       && ! grep { /INSTALL_BASE/ || /PREFIX/ } @ARGV ) ?
-		     ( UNINST => 1 ) :
+		   ( $] >= 5.009001 && $] < 5.011000 ?
+		     ( INSTALLDIRS => 'perl' ) :
 		     ()
 		   ),
                    PM              => 
                        {'lib/version.pm'  => '$(INST_LIBDIR)/version.pm',
                         'lib/version.pod' => '$(INST_LIBDIR)/version.pod',
-                        'lib/version/regex.pm'  =>
-                            '$(INST_LIBDIR)/version/regex.pm',
                         'lib/version/Internals.pod' =>
-                            '$(INST_LIBDIR)/version/Internals.pod',
-                        'vperl/vpp.pm' => '$(INST_LIBDIR)/version/vpp.pm',
-                        },
+			    '$(INST_LIBDIR)/version/Internals.pod'},
                    PL_FILES        => {},
                    C               => [],
                    clean           => { FILES => 'vutil/Makefile.PL' },
@@ -96,6 +70,7 @@ sub write_makefile
                           'hg log --style changelog > Changes'
                        ),
                    },
+
                  );
 }
 
@@ -103,8 +78,10 @@ sub init
 {
     my $hash = $_[1];
 
-    # include this always
-    unless ($no_xs) {
+    if ($no_xs) {
+        $hash->{'PM'}->{'vperl/vpp.pm'} = '$(INST_LIBDIR)/version/vpp.pm';
+    }
+    else {
         open MAKEFILE, '>vutil/Makefile.PL';
         while (<DATA>) {
             print MAKEFILE $_;
@@ -187,5 +164,5 @@ WriteMakefile(
     AUTHOR              => 'John Peacock <jpeacock@cpan.org>',
     VERSION_FROM        => 'lib/version/vxs.pm',
     OBJECT              => q/$(O_FILES)/,
-    depend              => { qw< vxs.c vxs.inc > },
+    TYPEMAPS            => ['../lib/version/typemap'],
 );

@@ -1,18 +1,12 @@
-/* This file is part of the "version" CPAN distribution.  Please avoid
-   editing it in the perl core. */
-
-#ifndef PERL_CORE
-#  define PERL_NO_GET_CONTEXT
-#  include "EXTERN.h"
-#  include "perl.h"
-#  include "XSUB.h"
-#  define NEED_my_snprintf
-#  define NEED_newRV_noinc
-#  define NEED_vnewSVpvf
-#  define NEED_newSVpvn_flags_GLOBAL
-#  define NEED_warner
-#  include "ppport.h"
-#endif
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+#define NEED_my_snprintf
+#define NEED_newRV_noinc
+#define NEED_vnewSVpvf
+#define NEED_newSVpvn_flags_GLOBAL
+#define NEED_warner
+#include "ppport.h"
 #include "vutil.h"
 
 #define VERSION_MAX 0x7FFFFFFF
@@ -284,7 +278,8 @@ Perl_scan_version(pTHX_ const char *s, SV *rv, bool qv)
     last = PRESCAN_VERSION(s, FALSE, &errstr, &qv, &saw_decimal, &width, &alpha);
     if (errstr) {
 	/* "undef" is a special case and not an error */
-	if ( ! ( *s == 'u' && strEQ(s+1,"ndef")) ) {
+	if ( ! ( *s == 'u' && strEQ(s,"undef")) ) {
+	    Safefree(start);
 	    Perl_croak(aTHX_ "%s", errstr);
 	}
     }
@@ -396,7 +391,7 @@ Perl_scan_version(pTHX_ const char *s, SV *rv, bool qv)
 	}
     }
     if ( qv ) { /* quoted versions always get at least three terms*/
-	SSize_t len = AvFILLp(av);
+	I32 len = av_len(av);
 	/* This for loop appears to trigger a compiler bug on OS X, as it
 	   loops infinitely. Yes, len is negative. No, it makes no sense.
 	   Compiler in question is:
@@ -432,7 +427,7 @@ Perl_scan_version(pTHX_ const char *s, SV *rv, bool qv)
     (void)hv_stores(MUTABLE_HV(hv), "version", newRV_noinc(MUTABLE_SV(av)));
 
     /* fix RT#19517 - special case 'undef' as string */
-    if ( *s == 'u' && strEQ(s+1,"ndef") ) {
+    if ( *s == 'u' && strEQ(s,"undef") ) {
 	s += 5;
     }
 
@@ -462,9 +457,9 @@ Perl_new_version(pTHX_ SV *ver)
     dVAR;
     SV * const rv = newSV(0);
     PERL_ARGS_ASSERT_NEW_VERSION;
-    if ( ISA_VERSION_OBJ(ver) ) /* can just copy directly */
+    if ( ISA_CLASS_OBJ(ver,"version") ) /* can just copy directly */
     {
-	SSize_t key;
+	I32 key;
 	AV * const av = newAV();
 	AV *sav;
 	/* This will get reblessed later if a derived class*/
@@ -483,24 +478,24 @@ Perl_new_version(pTHX_ SV *ver)
 
 	if ( hv_exists(MUTABLE_HV(ver), "alpha", 5) )
 	    (void)hv_stores(MUTABLE_HV(hv), "alpha", newSViv(1));
+
+	if ( hv_exists(MUTABLE_HV(ver), "width", 5 ) )
 	{
-	    SV ** svp = hv_fetchs(MUTABLE_HV(ver), "width", FALSE);
-	    if(svp) {
-		const I32 width = SvIV(*svp);
-		(void)hv_stores(MUTABLE_HV(hv), "width", newSViv(width));
-	    }
+	    const I32 width = SvIV(*hv_fetchs(MUTABLE_HV(ver), "width", FALSE));
+	    (void)hv_stores(MUTABLE_HV(hv), "width", newSViv(width));
 	}
+
+	if ( hv_exists(MUTABLE_HV(ver), "original", 8 ) )
 	{
-	    SV ** svp = hv_fetchs(MUTABLE_HV(ver), "original", FALSE);
-	    if(svp)
-		(void)hv_stores(MUTABLE_HV(hv), "original", newSVsv(*svp));
+	    SV * pv = *hv_fetchs(MUTABLE_HV(ver), "original", FALSE);
+	    (void)hv_stores(MUTABLE_HV(hv), "original", newSVsv(pv));
 	}
+
 	sav = MUTABLE_AV(SvRV(*hv_fetchs(MUTABLE_HV(ver), "version", FALSE)));
 	/* This will get reblessed later if a derived class*/
 	for ( key = 0; key <= av_len(sav); key++ )
 	{
-	    SV * const sv = *av_fetch(sav, key, FALSE);
-	    const I32 rev = SvIV(sv);
+	    const I32 rev = SvIV(*av_fetch(sav, key, FALSE));
 	    av_push(av, newSViv(rev));
 	}
 
@@ -512,15 +507,16 @@ Perl_new_version(pTHX_ SV *ver)
 	const MAGIC* const mg = SvVSTRING_mg(ver);
 	if ( mg ) { /* already a v-string */
 	    const STRLEN len = mg->mg_len;
-	    const char * const version = (const char*)mg->mg_ptr;
+	    char * const version = savepvn( (const char*)mg->mg_ptr, len);
 	    sv_setpvn(rv,version,len);
 	    /* this is for consistency with the pure Perl class */
 	    if ( isDIGIT(*version) )
 		sv_insert(rv, 0, 0, "v", 1);
+	    Safefree(version);
 	}
 	else {
 #endif
-	SvSetSV_nosteal(rv, ver); /* make a duplicate */
+	sv_setsv(rv,ver); /* make a duplicate */
 #ifdef SvVOK
 	}
     }
@@ -555,7 +551,7 @@ Perl_upg_version(pTHX_ SV *ver, bool qv)
 
     PERL_ARGS_ASSERT_UPG_VERSION;
 
-    if ( SvNOK(ver) && !( SvPOK(ver) && SvCUR(ver) == 3 ) )
+    if ( SvNOK(ver) && !( SvPOK(ver) && sv_len(ver) == 3 ) )
     {
 	STRLEN len;
 
@@ -563,50 +559,37 @@ Perl_upg_version(pTHX_ SV *ver, bool qv)
 	char tbuf[64];
 	SV *sv = SvNVX(ver) > 10e50 ? newSV(64) : 0;
 	char *buf;
-        STORE_NUMERIC_LOCAL_SET_STANDARD();
+#ifdef USE_LOCALE_NUMERIC
+	char *loc = savepv(setlocale(LC_NUMERIC, NULL));
+	setlocale(LC_NUMERIC, "C");
+#endif
 	if (sv) {
-	    Perl_sv_catpvf(aTHX_ sv, "%.9"NVff, SvNVX(ver));
-	    len = SvCUR(sv);
-	    buf = SvPVX(sv);
+	    Perl_sv_setpvf(aTHX_ sv, "%.9"NVff, SvNVX(ver));
+	    buf = SvPV(sv, len);
 	}
 	else {
 	    len = my_snprintf(tbuf, sizeof(tbuf), "%.9"NVff, SvNVX(ver));
 	    buf = tbuf;
 	}
-        RESTORE_NUMERIC_LOCAL();
+#ifdef USE_LOCALE_NUMERIC
+	setlocale(LC_NUMERIC, loc);
+	Safefree(loc);
+#endif
 	while (buf[len-1] == '0' && len > 0) len--;
 	if ( buf[len-1] == '.' ) len--; /* eat the trailing decimal */
 	version = savepvn(buf, len);
-	SAVEFREEPV(version);
 	SvREFCNT_dec(sv);
     }
 #ifdef SvVOK
     else if ( (mg = SvVSTRING_mg(ver)) ) { /* already a v-string */
 	version = savepvn( (const char*)mg->mg_ptr,mg->mg_len );
-	SAVEFREEPV(version);
 	qv = TRUE;
     }
 #endif
-    else if ( (SvUOK(ver) && SvUVX(ver) > VERSION_MAX)
-	   || (SvIOK(ver) && SvIVX(ver) > VERSION_MAX) ) {
-	/* out of bounds [unsigned] integer */
-	STRLEN len;
-	char tbuf[64];
-	len = my_snprintf(tbuf, sizeof(tbuf), "%d", VERSION_MAX);
-	version = savepvn(tbuf, len);
-	SAVEFREEPV(version);
-	Perl_ck_warner(aTHX_ packWARN(WARN_OVERFLOW),
-		       "Integer overflow in version %d",VERSION_MAX);
-    }
-    else if ( SvUOK(ver) || SvIOK(ver) ) {
-	version = savesvpv(ver);
-	SAVEFREEPV(version);
-    }
-    else if ( SvPOK(ver) )/* must be a string or something like a string */
+    else /* must be a string or something like a string */
     {
 	STRLEN len;
-	version = savepvn(SvPV(ver,len), SvCUR(ver));
-	SAVEFREEPV(version);
+	version = savepv(SvPV(ver,len));
 #ifndef SvVOK
 #  if PERL_VERSION > 5
 	/* This will only be executed for 5.6.0 - 5.8.0 inclusive */
@@ -623,7 +606,6 @@ Perl_upg_version(pTHX_ SV *ver, bool qv)
 		    int saw_decimal = 0;
 		    sv_setpvf(nsv,"v%vd",ver);
 		    pos = nver = savepv(SvPV_nolen(nsv));
-                    SAVEFREEPV(pos);
 
 		    /* scan the resulting formatted string */
 		    pos++; /* skip the leading 'v' */
@@ -635,6 +617,7 @@ Perl_upg_version(pTHX_ SV *ver, bool qv)
 
 		    /* is definitely a v-string */
 		    if ( saw_decimal >= 2 ) {
+			Safefree(version);
 			version = nver;
 		    }
 		    break;
@@ -644,17 +627,13 @@ Perl_upg_version(pTHX_ SV *ver, bool qv)
 #  endif
 #endif
     }
-    else
-    {
-	/* no idea what this is */
-	Perl_croak(aTHX_ "Invalid version format (non-numeric data)");
-    }
 
     s = SCAN_VERSION(version, ver, qv);
     if ( *s != '\0' ) 
 	Perl_ck_warner(aTHX_ packWARN(WARN_MISC), 
 		       "Version string '%s' contains invalid data; "
 		       "ignoring: '%s'", version, s);
+    Safefree(version);
     return ver;
 }
 
@@ -692,7 +671,6 @@ Perl_vverify(pTHX_ SV *vs)
 #endif
 {
     SV *sv;
-    SV **svp;
 
     PERL_ARGS_ASSERT_VVERIFY;
 
@@ -701,8 +679,8 @@ Perl_vverify(pTHX_ SV *vs)
 
     /* see if the appropriate elements exist */
     if ( SvTYPE(vs) == SVt_PVHV
-	 && (svp = hv_fetchs(MUTABLE_HV(vs), "version", FALSE))
-	 && (sv = SvRV(*svp))
+	 && hv_exists(MUTABLE_HV(vs), "version", 7)
+	 && (sv = SvRV(*hv_fetchs(MUTABLE_HV(vs), "version", FALSE)))
 	 && SvTYPE(sv) == SVt_PVAV )
 	return vs;
     else
@@ -732,8 +710,7 @@ Perl_vnumify2(pTHX_ SV *vs)
 Perl_vnumify(pTHX_ SV *vs)
 #endif
 {
-    SSize_t i, len;
-    I32 digit;
+    I32 i, len, digit;
     int width;
     bool alpha = FALSE;
     SV *sv;
@@ -749,13 +726,10 @@ Perl_vnumify(pTHX_ SV *vs)
     /* see if various flags exist */
     if ( hv_exists(MUTABLE_HV(vs), "alpha", 5 ) )
 	alpha = TRUE;
-    {
-	SV ** svp = hv_fetchs(MUTABLE_HV(vs), "width", FALSE);
-	if ( svp )
-	    width = SvIV(*svp);
-	else
-	    width = 3;
-    }
+    if ( hv_exists(MUTABLE_HV(vs), "width", 5 ) )
+	width = SvIV(*hv_fetchs(MUTABLE_HV(vs), "width", FALSE));
+    else
+	width = 3;
 
 
     /* attempt to retrieve the version array */
@@ -769,15 +743,11 @@ Perl_vnumify(pTHX_ SV *vs)
 	return newSVpvs("0");
     }
 
-    {
-	SV * tsv = *av_fetch(av, 0, 0);
-	digit = SvIV(tsv);
-    }
+    digit = SvIV(*av_fetch(av, 0, 0));
     sv = Perl_newSVpvf(aTHX_ "%d.", (int)PERL_ABS(digit));
     for ( i = 1 ; i < len ; i++ )
     {
-	SV * tsv = *av_fetch(av, i, 0);
-	digit = SvIV(tsv);
+	digit = SvIV(*av_fetch(av, i, 0));
 	if ( width < 3 ) {
 	    const int denom = (width == 2 ? 10 : 100);
 	    const div_t term = div((int)PERL_ABS(digit),denom);
@@ -790,8 +760,7 @@ Perl_vnumify(pTHX_ SV *vs)
 
     if ( len > 0 )
     {
-	SV * tsv = *av_fetch(av, len, 0);
-	digit = SvIV(tsv);
+	digit = SvIV(*av_fetch(av, len, 0));
 	if ( alpha && width == 3 ) /* alpha version */
 	    sv_catpvs(sv,"_");
 	Perl_sv_catpvf(aTHX_ sv, "%0*d", width, (int)digit);
@@ -847,22 +816,17 @@ Perl_vnormal(pTHX_ SV *vs)
     {
 	return newSVpvs("");
     }
-    {
-	SV * tsv = *av_fetch(av, 0, 0);
-	digit = SvIV(tsv);
-    }
+    digit = SvIV(*av_fetch(av, 0, 0));
     sv = Perl_newSVpvf(aTHX_ "v%"IVdf, (IV)digit);
     for ( i = 1 ; i < len ; i++ ) {
-	SV * tsv = *av_fetch(av, i, 0);
-	digit = SvIV(tsv);
+	digit = SvIV(*av_fetch(av, i, 0));
 	Perl_sv_catpvf(aTHX_ sv, ".%"IVdf, (IV)digit);
     }
 
     if ( len > 0 )
     {
 	/* handle last digit specially */
-	SV * tsv = *av_fetch(av, len, 0);
-	digit = SvIV(tsv);
+	digit = SvIV(*av_fetch(av, len, 0));
 	if ( alpha )
 	    Perl_sv_catpvf(aTHX_ sv, "_%"IVdf, (IV)digit);
 	else
@@ -896,7 +860,6 @@ Perl_vstringify2(pTHX_ SV *vs)
 Perl_vstringify(pTHX_ SV *vs)
 #endif
 {
-    SV ** svp;
     PERL_ARGS_ASSERT_VSTRINGIFY;
 
     /* extract the HV from the object */
@@ -904,10 +867,9 @@ Perl_vstringify(pTHX_ SV *vs)
     if ( ! vs )
 	Perl_croak(aTHX_ "Invalid version object");
 
-    svp = hv_fetchs(MUTABLE_HV(vs), "original", FALSE);
-    if (svp) {
+    if (hv_exists(MUTABLE_HV(vs), "original",  sizeof("original") - 1)) {
 	SV *pv;
-	pv = *svp;
+	pv = *hv_fetchs(MUTABLE_HV(vs), "original", FALSE);
 	if ( SvPOK(pv) )
 	    return newSVsv(pv);
 	else
@@ -937,8 +899,7 @@ Perl_vcmp2(pTHX_ SV *lhv, SV *rhv)
 Perl_vcmp(pTHX_ SV *lhv, SV *rhv)
 #endif
 {
-    SSize_t i,l,m,r;
-    I32 retval;
+    I32 i,l,m,r,retval;
     bool lalpha = FALSE;
     bool ralpha = FALSE;
     I32 left = 0;
@@ -970,11 +931,8 @@ Perl_vcmp(pTHX_ SV *lhv, SV *rhv)
     i = 0;
     while ( i <= m && retval == 0 )
     {
-	SV * const lsv = *av_fetch(lav,i,0);
-	SV * rsv;
-	left = SvIV(lsv);
-	rsv = *av_fetch(rav,i,0);
-	right = SvIV(rsv);
+	left  = SvIV(*av_fetch(lav,i,0));
+	right = SvIV(*av_fetch(rav,i,0));
 	if ( left < right  )
 	    retval = -1;
 	if ( left > right )
@@ -1001,8 +959,7 @@ Perl_vcmp(pTHX_ SV *lhv, SV *rhv)
 	{
 	    while ( i <= r && retval == 0 )
 	    {
-		SV * const rsv = *av_fetch(rav,i,0);
-		if ( SvIV(rsv) != 0 )
+		if ( SvIV(*av_fetch(rav,i,0)) != 0 )
 		    retval = -1; /* not a match after all */
 		i++;
 	    }
@@ -1011,8 +968,7 @@ Perl_vcmp(pTHX_ SV *lhv, SV *rhv)
 	{
 	    while ( i <= l && retval == 0 )
 	    {
-		SV * const lsv = *av_fetch(lav,i,0);
-		if ( SvIV(lsv) != 0 )
+		if ( SvIV(*av_fetch(lav,i,0)) != 0 )
 		    retval = +1; /* not a match after all */
 		i++;
 	    }

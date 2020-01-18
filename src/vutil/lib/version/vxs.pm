@@ -1,11 +1,13 @@
 #!perl -w
 package version::vxs;
 
-use v5.10;
+use 5.005_03;
 use strict;
 
 use vars qw(@ISA $VERSION $CLASS );
-$VERSION = 0.9907;
+
+$VERSION = 0.9902;
+
 $CLASS = 'version::vxs';
 
 eval {
